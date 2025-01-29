@@ -32,6 +32,17 @@ std::string execute_cgi(const std::string& script_path, const std::string& inter
         setenv("REQUEST_METHOD", method.c_str(), 1);
         setenv("QUERY_STRING", query_string.c_str(), 1);
         setenv("CONTENT_LENGTH", std::to_string(post_data.length()).c_str(), 1);
+        setenv("CONTENT_TYPE", "application/x-www-form-urlencoded", 1);
+
+        // Redirect stdin to read POST data
+        if (method == "POST") {
+            int input_pipe[2];
+            pipe(input_pipe);
+            write(input_pipe[1], post_data.c_str(), post_data.length());
+            close(input_pipe[1]);
+            dup2(input_pipe[0], STDIN_FILENO);
+            close(input_pipe[0]);
+        }
 
         // Redirect stdout to the pipe
         dup2(pipefd[1], STDOUT_FILENO);
@@ -139,6 +150,7 @@ int main() {
 
             std::cout << "Request received: " << request << std::endl;
             std::cout << "Method: " << method << ", Path: " << path << ", Query: " << query_string << std::endl;
+            std::cout << "POST Data: " << post_data << std::endl;
 
             // Check if the file is a CGI script
             size_t dot_pos = path.find_last_of('.');

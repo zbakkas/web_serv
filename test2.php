@@ -1,16 +1,28 @@
 <?php
-header("Content-Type: text/html");
+// test.php - A simple PHP script to test GET and POST requests
 
-echo "<h1>PHP CGI Script</h1>";
+// Output the request method
+echo "Request Method: " . $_SERVER['REQUEST_METHOD'] . "<br>";
 
-$method = getenv("REQUEST_METHOD");
-echo "<p>Request Method: " . htmlspecialchars($method) . "</p>";
-
-if ($method == "GET") {
-    parse_str(getenv("QUERY_STRING"), $_GET);
-    echo "<p>Name: " . htmlspecialchars($_GET["name"] ?? "No Name") . "</p>";
-} elseif ($method == "POST") {
-    parse_str(file_get_contents("php://input"), $_POST);
-    echo "<p>Name: " . htmlspecialchars($_POST["name"] ?? "No Name") . "</p>";
+// Handle GET request
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    echo "GET Data: <br>";
+    foreach ($_GET as $key => $value) {
+        echo "$key: $value<br>";
+    }
 }
+
+// Handle POST request
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    echo "POST Data: <br>";
+    foreach ($_POST as $key => $value) {
+        echo "$key: $value<br>";
+    }
+}
+
+// Output environment variables for debugging
+echo "<br>Environment Variables:<br>";
+echo "QUERY_STRING: " . $_SERVER['QUERY_STRING'] . "<br>";
+echo "CONTENT_LENGTH: " . $_SERVER['CONTENT_LENGTH'] . "<br>";
+echo "CONTENT_TYPE: " . $_SERVER['CONTENT_TYPE'] . "<br>";
 ?>

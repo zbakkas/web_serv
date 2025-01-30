@@ -40,6 +40,12 @@ std::string read_file(const std::string& file_path) {
 
 
 std::string execute_cgi(const std::string& script_path, const std::string& interpreter, const std::string& method, const std::string& query_string, const std::string& post_data) {
+
+
+
+     std::cout<< "\n\n"<< "query_string "<<query_string<<"\n\n";
+      std::cout<< "\n\n"<< "post_data "<<post_data<<"\n\n";
+      
     std::cout << "Executing CGI script: " << script_path << std::endl;
 
     // Get the absolute path of the script

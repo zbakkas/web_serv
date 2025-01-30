@@ -214,17 +214,29 @@ int main() {
 
             // Check if the file is a CGI script
             size_t dot_pos = path.find_last_of('.');
-            if (dot_pos != std::string::npos) {
+            if (dot_pos != std::string::npos) 
+            {
                 std::string extension = path.substr(dot_pos);
-                if (interpreters.find(extension) != interpreters.end()) {
+                // std::cout<< "\n\n"<< "extension"<<extension<<"\n\n";
+                if (interpreters.find(extension) != interpreters.end()) 
+                {
                     // Handle CGI scripts
                     std::string interpreter = interpreters[extension];
                     std::string script_path = "." + path;
 
-                    std::string cgi_output = execute_cgi(script_path, interpreter, method, query_string, post_data);
+                    // std::cout<< "\n\n"<< "interpreter"<<interpreter<<"\n\n";
+
+                    // std::cout<< "\n\n"<< "script_path"<<script_path<<"\n\n";
+
+                    std::string cgi_output = execute_cgi(script_path, interpreter, method, query_string, post_data) ;
+
+                        // std::cout<< "\n\n"<< "cgi_output"<<cgi_output<<"\n\n";
 
                     // Send the CGI output as the HTTP response
                     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(cgi_output.length()) + "\r\n\r\n" + cgi_output;
+                    
+                    // std::cout<< "\n\n"<< "response "<<response<<"\n\n";
+
                     send(new_socket, response.c_str(), response.length(), 0);
                 } else {
                     // Handle static files

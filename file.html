@@ -21,6 +21,46 @@
         <input type="text" id="age" name="age"><br>
         <input type="submit" value="log in">
     </form>
+
+    <!-- poooooost-->
+
+    <h3>POST</h3>
+    <h4>multipart</h4>
+    <form method="post" action="./sy.php" enctype="multipart/form-data">
+        <div class="flex">
+            <label for="say">What greeting do you want to say ?</label>
+            <input type="text" name="say" id="say" value="Hi">
+        </div>
+        <div class="flex">
+            <label for="to">Who do you want to say it to ?</label>
+            <input type="text" name="to" value="Massilia">
+        </div>
+        <div>
+            <button>Send my greetings</button>
+        </div>
+    </form>
+    <br><br><br>
+
+    <h4>classic</h4>
+    <form method="post" action="./sy.php">
+        <div class="flex">
+            <label for="say">What greeting do you want to say ?</label>
+            <input type="text" name="say" id="say" value="Hey">
+        </div>
+        <div class="flex">
+            <label for="to">Who do you want to say it to ?</label>
+            <input type="text" name="to" value="Lou">
+        </div>
+        <div>
+            <button>Send my greetings</button>
+        </div>
+    </form>
+    <br><br><br>
+
+
+
+
+
 </body>
 </html>
 

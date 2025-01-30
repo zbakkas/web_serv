@@ -10,19 +10,46 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <map>
-
+#include <fstream>
+#include <sstream>
+#include <sys/stat.h> // For mkdir
+#include <limits.h>
 #define PORT 8080
 #define BUFFER_SIZE 1024
+#define UPLOAD_DIR "./uploads"
 
 // Map file extensions to their corresponding interpreters
 std::map<std::string, std::string> interpreters = {
-    {".php", "/usr/bin/php"},
+    {".php", "/usr/bin/php-cgi"},
     {".py", "/usr/bin/python3"},
     {".sh", "/bin/bash"}
 };
 
-// Function to execute a CGI script
+// Function to read a file and return its content
+std::string read_file(const std::string& file_path) {
+    std::ifstream file(file_path.c_str(), std::ios::in | std::ios::binary);
+    if (!file) {
+        return "";
+    }
+
+    std::ostringstream content;
+    content << file.rdbuf();
+    return content.str();
+}
+
+
+
 std::string execute_cgi(const std::string& script_path, const std::string& interpreter, const std::string& method, const std::string& query_string, const std::string& post_data) {
+    std::cout << "Executing CGI script: " << script_path << std::endl;
+
+    // Get the absolute path of the script
+    char abs_path[PATH_MAX];
+    if (realpath(script_path.c_str(), abs_path) == NULL) {
+        std::cerr << "Error resolving absolute path for: " << script_path << std::endl;
+        return "";
+    }
+    std::cout << "Absolute path: " << abs_path << std::endl;
+
     int pipefd[2];
     pipe(pipefd); // Create a pipe for communication with the child process
 
@@ -33,6 +60,8 @@ std::string execute_cgi(const std::string& script_path, const std::string& inter
         setenv("QUERY_STRING", query_string.c_str(), 1);
         setenv("CONTENT_LENGTH", std::to_string(post_data.length()).c_str(), 1);
         setenv("CONTENT_TYPE", "application/x-www-form-urlencoded", 1);
+        setenv("REDIRECT_STATUS", "200", 1); // Required for PHP-CGI
+        setenv("SCRIPT_FILENAME", abs_path, 1); // Add this line
 
         // Redirect stdin to read POST data
         if (method == "POST") {
@@ -49,8 +78,16 @@ std::string execute_cgi(const std::string& script_path, const std::string& inter
         close(pipefd[0]);
         close(pipefd[1]);
 
+        // Change to the script's directory
+        std::string dir = script_path.substr(0, script_path.find_last_of('/'));
+        if (!dir.empty()) {
+            std::cout << "Changing working directory to: " << dir << std::endl;
+            chdir(dir.c_str());
+        }
+
         // Execute the CGI script using the appropriate interpreter
-        if (execl(interpreter.c_str(), interpreter.c_str(), script_path.c_str(), NULL) == -1) {
+        std::cout << "Executing: " << interpreter << " " << abs_path << std::endl;
+        if (execl(interpreter.c_str(), interpreter.c_str(), abs_path, NULL) == -1) {
             perror("execl failed");
             exit(1);
         }
@@ -69,7 +106,17 @@ std::string execute_cgi(const std::string& script_path, const std::string& inter
 
         // Wait for the child process to finish
         waitpid(pid, NULL, 0);
-        return output;
+
+        // Parse the CGI output to extract the response body
+        size_t header_end = output.find("\r\n\r\n");
+        if (header_end != std::string::npos) {
+            // Extract the body (everything after the headers)
+            std::string body = output.substr(header_end + 4);
+            return body;
+        } else {
+            // If no headers are found, return the entire output
+            return output;
+        }
     } else {
         std::cerr << "Fork failed" << std::endl;
         return "";
@@ -131,6 +178,9 @@ int main() {
 
     std::cout << "Server is listening on port " << PORT << std::endl;
 
+    // Create uploads directory if it doesn't exist
+    mkdir(UPLOAD_DIR, 0777);
+
     while (true) {
         // Accept a new connection
         if ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
@@ -148,30 +198,73 @@ int main() {
             std::string method, path, query_string, post_data;
             parse_request(request, method, path, query_string, post_data);
 
-            std::cout << "Request received: " << request << std::endl;
-            std::cout << "Method: " << method << ", Path: " << path << ", Query: " << query_string << std::endl;
-            std::cout << "POST Data: " << post_data << std::endl;
+            std::cout << "Request received: " << method << " " << path << std::endl;
+
+            // Handle file uploads
+            if (path == "/upload" && method == "POST") {
+                std::ofstream out_file(std::string(UPLOAD_DIR) + "/uploaded_file", std::ios::binary);
+                out_file.write(post_data.c_str(), post_data.size());
+                out_file.close();
+
+                std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nFile uploaded";
+                send(new_socket, response.c_str(), response.length(), 0);
+                close(new_socket);
+                continue;
+            }
 
             // Check if the file is a CGI script
             size_t dot_pos = path.find_last_of('.');
             if (dot_pos != std::string::npos) {
                 std::string extension = path.substr(dot_pos);
                 if (interpreters.find(extension) != interpreters.end()) {
+                    // Handle CGI scripts
                     std::string interpreter = interpreters[extension];
-                    std::string cgi_output = execute_cgi("." + path, interpreter, method, query_string, post_data);
+                    std::string script_path = "." + path;
+
+                    std::string cgi_output = execute_cgi(script_path, interpreter, method, query_string, post_data);
 
                     // Send the CGI output as the HTTP response
                     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(cgi_output.length()) + "\r\n\r\n" + cgi_output;
                     send(new_socket, response.c_str(), response.length(), 0);
                 } else {
-                    // Unsupported file extension
-                    std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
-                    send(new_socket, response.c_str(), response.length(), 0);
+                    // Handle static files
+                    std::string file_path = "." + path;
+                    std::string file_content = read_file(file_path);
+
+                    if (!file_content.empty()) {
+                        // Determine the MIME type based on the file extension
+                        std::string content_type = "text/plain";
+                        if (extension == ".html") {
+                            content_type = "text/html";
+                        } else if (extension == ".css") {
+                            content_type = "text/css";
+                        } else if (extension == ".js") {
+                            content_type = "application/javascript";
+                        }
+
+                        // Send the file content as the HTTP response
+                        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: " + content_type + "\r\nContent-Length: " + std::to_string(file_content.length()) + "\r\n\r\n" + file_content;
+                        send(new_socket, response.c_str(), response.length(), 0);
+                    } else {
+                        // File not found
+                        std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
+                        send(new_socket, response.c_str(), response.length(), 0);
+                    }
                 }
             } else {
                 // Handle non-CGI files (e.g., serve static files)
-                std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
-                send(new_socket, response.c_str(), response.length(), 0);
+                std::string file_path = "." + path;
+                std::string file_content = read_file(file_path);
+
+                if (!file_content.empty()) {
+                    // Send the file content as the HTTP response
+                    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(file_content.length()) + "\r\n\r\n" + file_content;
+                    send(new_socket, response.c_str(), response.length(), 0);
+                } else {
+                    // File not found
+                    std::string response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
+                    send(new_socket, response.c_str(), response.length(), 0);
+                }
             }
         }
 
